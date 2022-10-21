@@ -133,7 +133,7 @@ class ShynthesisNetwork(nn.Module):
         self.toRGBLayers = nn.ModuleList()
         self.noiseModulators = nn.ModuleList()
         self.depthScales = [mapping_dim]
-        self.Normalization = NormalizationLayer()
+        self.activation = nn.LeakyReLU(0.2)
         self.Upsample = nn.UpsamplingBilinear2d()
 
         #We have different structure for convolutional layers in first conv block, that's why we create
@@ -188,22 +188,22 @@ class ShynthesisNetwork(nn.Module):
     def forward(self, x):
 
         batchSize = x.size(0)
-        mapping = self.mapping_forward_net(self.noramlizationLayer(x))
+        mapping = self.mapping_forward_net((x - torch.mean(x))/(torch.std(x)+ 1e-8)) #normalization of layer to speed up learning. 
         if self.training:
             self.mean_w = self.gamma_avg * self.mean_w + (1-self.gamma_avg) * mapping.mean(dim=0, keepdim=True)
 
         if self.phiTruncation < 1:
             mapping = self.mean_w + self.phiTruncation * (mapping - self.mean_w)
 
-        feature = self.baseScale0.expand(batchSize, -1, 4, 4)
-        feature = feature + self.noiseMod00(torch.randn((batchSize, 1, 4, 4), device=x.device))
+        feature = self.constant.expand(batchSize, -1, 4, 4)
+        feature = feature + self.NoiseScaler0(torch.randn((batchSize, 1, 4, 4), device=x.device))
 
         feature = self.activation(feature)
-        feature = self.adain00(feature, mapping)
+        feature = self.adain0(feature, mapping)
         feature = self.conv0(feature)
-        feature = feature + self.noiseMod01(torch.randn((batchSize, 1, 4, 4), device=x.device))
+        feature = feature + self.NoiseScaler1(torch.randn((batchSize, 1, 4, 4), device=x.device))
         feature = self.activation(feature)
-        feature = self.adain01(feature, mapping)
+        feature = self.adain1(feature, mapping)
 
         for nLayer, group in enumerate(self.scaleLayers):
 
@@ -238,6 +238,4 @@ class ShynthesisNetwork(nn.Module):
 
         side =  2**(2 + len(self.toRGBLayers))
         return (side, side)
-
-
 
